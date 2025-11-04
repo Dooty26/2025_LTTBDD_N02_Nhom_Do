@@ -16,5 +16,3 @@
    flutter run
    ```
 
-## Thông tin nhóm
-Vui lòng xem trong ứng dụng ở mục "Thông tin nhóm".
