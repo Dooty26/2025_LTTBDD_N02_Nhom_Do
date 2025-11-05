@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'weather_service.dart';
-import 'package:intl/intl.dart';
+import 'current.dart';
+import '_7d.dart';
+import '_24h.dart';
+import 'group_info.dart';
+import 'location_service.dart';
+import 'location_selector.dart';
 
 void main() {
   runApp(const MyApp());
@@ -86,17 +91,53 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
   final WeatherService _weatherService = WeatherService();
+  final LocationService _locationService = LocationService();
   Map<String, dynamic> _currentWeather = {};
   List<dynamic> _forecast7Days = [];
+  LocationModel _currentLocation =
+      LocationModel(name: 'Ha Noi', displayName: 'Hà Nội');
   bool _loading = true;
-  final String _city = 'Hanoi';
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _loadAllWeatherData();
+    _getDeviceLocationAndWeather();
+  }
+
+  Future<void> _getDeviceLocationAndWeather() async {
+    setState(() {
+      _loading = true;
+    });
+    final deviceLocation = await _locationService.getDeviceLocation();
+    if (deviceLocation != null) {
+      setState(() {
+        _currentLocation = deviceLocation;
+      });
+      await _loadWeatherData(
+          '${deviceLocation.latitude},${deviceLocation.longitude}');
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.locale.languageCode == 'vi'
+                ? 'Không thể lấy vị trí hiện tại hoặc quyền bị từ chối'
+                : 'Unable to get current location or permission denied'),
+          ),
+        );
+      }
+      setState(() {
+        _currentLocation = LocationModel(
+          name: 'Ha Noi',
+          displayName: 'Hà Nội',
+        );
+      });
+      await _loadWeatherData('Ha Noi');
+      setState(() {
+        _loading = false;
+      });
+    }
   }
 
   @override
@@ -105,10 +146,14 @@ class _HomePageState extends State<HomePage>
     super.dispose();
   }
 
-  Future<void> _loadAllWeatherData() async {
+  Future<void> _loadWeatherData(String city) async {
+    setState(() {
+      _loading = true;
+    });
+
     try {
-      final current = await _weatherService.getCurrentWeather(_city);
-      final forecast7 = await _weatherService.fetch7DayForecast(_city);
+      final current = await _weatherService.getCurrentWeather(city);
+      final forecast7 = await _weatherService.fetch7DayForecast(city);
 
       setState(() {
         _currentWeather = current;
@@ -120,6 +165,59 @@ class _HomePageState extends State<HomePage>
         _loading = false;
       });
     }
+  }
+
+  Future<void> _onLocationChanged(LocationModel location) async {
+    setState(() {
+      _currentLocation = location;
+    });
+    await _loadWeatherData(location.name);
+  }
+
+  void _showLocationSelector() {
+    showDialog(
+      context: context,
+      builder: (context) => LocationSelectorDialog(
+        isVietnamese: widget.locale.languageCode == 'vi',
+        onLocationSelected: _onLocationChanged,
+      ),
+    );
+  }
+
+  List<dynamic> _getNext24Hours() {
+    final now = DateTime.now();
+    List<dynamic> allHours = [];
+    if (_forecast7Days.isNotEmpty) {
+      allHours.addAll(_forecast7Days[0]['hour']);
+      if (_forecast7Days.length > 1) {
+        allHours.addAll(_forecast7Days[1]['hour']);
+      }
+    }
+
+    dynamic nowHour;
+    for (var item in allHours) {
+      final timeStr = item['time'] as String? ?? '';
+      final time = DateTime.tryParse(timeStr);
+      if (time != null && (time.isAtSameMomentAs(now) || time.isBefore(now))) {
+        nowHour = item;
+      } else if (time != null && time.isAfter(now)) {
+        break;
+      }
+    }
+
+    final filteredHours = allHours.where((item) {
+      final timeStr = item['time'] as String? ?? '';
+      final time = DateTime.tryParse(timeStr);
+      return time != null && time.isAfter(now);
+    }).toList();
+
+    List<dynamic> next24Hours = [];
+    if (nowHour != null) {
+      next24Hours.add(nowHour);
+    }
+    next24Hours.addAll(filteredHours);
+
+    return next24Hours.take(24).toList();
   }
 
   @override
@@ -164,7 +262,12 @@ class _HomePageState extends State<HomePage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildCurrentWeather(isVietnamese),
+                    CurrentWeather(
+                      currentWeather: _currentWeather,
+                      isVietnamese: isVietnamese,
+                      translateCondition: translateCondition,
+                      onAddLocationPressed: _showLocationSelector,
+                    ),
                     const SizedBox(height: 60),
                     Text(
                       isVietnamese ? 'Dự báo 7 ngày tới' : '7-Day Forecast',
@@ -172,24 +275,10 @@ class _HomePageState extends State<HomePage>
                           fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 10),
-                    SizedBox(
-                      height: 240,
-                      child: ScrollConfiguration(
-                        behavior:
-                            const ScrollBehavior().copyWith(overscroll: false),
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _forecast7Days.length,
-                          itemBuilder: (context, index) {
-                            final item = _forecast7Days[index];
-                            return Container(
-                              width: 180,
-                              margin: const EdgeInsets.symmetric(horizontal: 8),
-                              child: _buildDayForecast(item, isVietnamese),
-                            );
-                          },
-                        ),
-                      ),
+                    SevenDayForecast(
+                      forecast7Days: _forecast7Days,
+                      isVietnamese: isVietnamese,
+                      translateCondition: translateCondition,
                     ),
                     const SizedBox(height: 60),
                     Text(
@@ -198,260 +287,15 @@ class _HomePageState extends State<HomePage>
                           fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 10),
-                    SizedBox(
-                      height: 240,
-                      child: Builder(
-                        builder: (context) {
-                          final now = DateTime.now();
-
-                          List<dynamic> allHours = [];
-                          if (_forecast7Days.isNotEmpty) {
-                            allHours.addAll(_forecast7Days[0]['hour']);
-                            if (_forecast7Days.length > 1) {
-                              allHours.addAll(_forecast7Days[1]['hour']);
-                            }
-                          }
-
-                          dynamic nowHour;
-                          for (var item in allHours) {
-                            final timeStr = item['time'] as String? ?? '';
-                            final time = DateTime.tryParse(timeStr);
-                            if (time != null &&
-                                (time.isAtSameMomentAs(now) ||
-                                    time.isBefore(now))) {
-                              nowHour = item;
-                            } else if (time != null && time.isAfter(now)) {
-                              break;
-                            }
-                          }
-
-                          final filteredHours = allHours.where((item) {
-                            final timeStr = item['time'] as String? ?? '';
-                            final time = DateTime.tryParse(timeStr);
-                            return time != null && time.isAfter(now);
-                          }).toList();
-
-                          List<dynamic> next24Hours = [];
-                          if (nowHour != null) {
-                            next24Hours.add(nowHour);
-                          }
-                          next24Hours.addAll(filteredHours);
-
-                          next24Hours = next24Hours.take(24).toList();
-
-                          return ScrollConfiguration(
-                            behavior: const ScrollBehavior()
-                                .copyWith(overscroll: false),
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: next24Hours.length,
-                              itemBuilder: (context, index) {
-                                final item = next24Hours[index];
-                                return Container(
-                                  width: 160,
-                                  margin:
-                                      const EdgeInsets.symmetric(horizontal: 8),
-                                  child: _buildHourForecast(item, isVietnamese),
-                                );
-                              },
-                            ),
-                          );
-                        },
-                      ),
+                    HourlyForecast(
+                      next24Hours: _getNext24Hours(),
+                      isVietnamese: isVietnamese,
+                      translateCondition: translateCondition,
                     ),
                   ],
                 ),
               ),
             ),
-    );
-  }
-
-  Widget _buildCurrentWeather(bool isVietnamese) {
-    final temp = _currentWeather['temp_c'] ?? '';
-    final condition = _currentWeather['condition']?['text'] ?? '';
-    final iconUrl = _currentWeather['condition']?['icon'] ?? '';
-    final humidity = _currentWeather['humidity'] ?? '';
-    final windKph = _currentWeather['wind_kph'] ?? '';
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(isVietnamese ? 'Thời tiết hiện tại' : 'Current Weather',
-              style: const TextStyle(fontSize: 35)),
-          const SizedBox(height: 20),
-          Text('$temp°C',
-              style:
-                  const TextStyle(fontSize: 35, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
-          if (iconUrl.isNotEmpty)
-            Image.network(
-              iconUrl.startsWith('//') ? 'https:$iconUrl' : iconUrl,
-              width: 64,
-              height: 64,
-            )
-          else
-            Icon(Icons.wb_sunny, size: 64, color: Colors.orange),
-          const SizedBox(height: 20),
-          Text(translateCondition(condition, isVietnamese),
-              style: const TextStyle(fontSize: 20)),
-          const SizedBox(height: 20),
-          Text('${isVietnamese ? "Độ ẩm" : "Humidity"}: $humidity%',
-              style: const TextStyle(fontSize: 16)),
-          Text('${isVietnamese ? "Gió" : "Wind"}: $windKph km/h',
-              style: const TextStyle(fontSize: 16)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDayForecast(dynamic item, bool isVietnamese) {
-    final date = item['date'] ?? '';
-    final day = item['day'] ?? {};
-    final maxTemp = day['maxtemp_c'] ?? '';
-    final minTemp = day['mintemp_c'] ?? '';
-    final condition = day['condition']?['text'] ?? '';
-    final iconUrl = day['condition']?['icon'] ?? '';
-
-    String topText = '';
-    String bottomText = '';
-    try {
-      final dateTime = DateTime.parse(date);
-      final dayMonth = DateFormat('dd/MM').format(dateTime);
-      final weekday =
-          DateFormat.EEEE(isVietnamese ? 'vi' : 'en').format(dateTime);
-
-      final now = DateTime.now();
-      final tomorrow = now.add(const Duration(days: 1));
-
-      if (dateTime.year == now.year &&
-          dateTime.month == now.month &&
-          dateTime.day == now.day) {
-        topText = isVietnamese ? 'Hôm nay' : 'Today';
-        bottomText = dayMonth;
-      } else if (dateTime.year == tomorrow.year &&
-          dateTime.month == tomorrow.month &&
-          dateTime.day == tomorrow.day) {
-        topText = isVietnamese ? 'Ngày mai' : 'Tomorrow';
-        bottomText = dayMonth;
-      } else {
-        topText = weekday;
-        bottomText = dayMonth;
-      }
-    } catch (e) {
-      topText = date;
-      bottomText = '';
-    }
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            topText,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          if (bottomText.isNotEmpty)
-            Text(
-              bottomText,
-              style: const TextStyle(fontSize: 16),
-            ),
-          const SizedBox(height: 10),
-          if (iconUrl.isNotEmpty)
-            Image.network(
-              iconUrl.startsWith('//') ? 'https:$iconUrl' : iconUrl,
-              width: 64,
-              height: 64,
-            )
-          else
-            Icon(Icons.calendar_today, size: 64, color: Colors.blue),
-          Text(
-            translateCondition(condition, isVietnamese),
-            style: const TextStyle(fontSize: 16),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '${isVietnamese ? "Nhiệt độ" : "Temp"}: $minTemp°/$maxTemp°',
-            style: const TextStyle(fontSize: 18),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHourForecast(dynamic item, bool isVietnamese) {
-    final time = item['time']?.substring(11, 16) ?? '';
-    final temp = item['temp_c'] ?? '';
-    final condition = item['condition']?['text'] ?? '';
-    final iconUrl = item['condition']?['icon'] ?? '';
-
-    String displayTime = time;
-    final now = DateTime.now();
-    final itemTime = DateTime.tryParse(item['time'] ?? '');
-    if (itemTime != null &&
-        itemTime.hour == now.hour &&
-        itemTime.day == now.day &&
-        itemTime.month == now.month &&
-        itemTime.year == now.year) {
-      displayTime = isVietnamese ? 'Hiện tại' : 'Now';
-    }
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (iconUrl.isNotEmpty)
-            Image.network(
-              iconUrl.startsWith('//') ? 'https:$iconUrl' : iconUrl,
-              width: 64,
-              height: 64,
-            )
-          else
-            Icon(Icons.access_time, size: 64, color: Colors.green),
-          const SizedBox(height: 10),
-          Text(displayTime,
-              style:
-                  const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          Text(translateCondition(condition, isVietnamese),
-              style: const TextStyle(fontSize: 16)),
-          const SizedBox(height: 6),
-          Text('${isVietnamese ? "Nhiệt độ" : "Temp"}: $temp°C',
-              style: const TextStyle(fontSize: 16)),
-        ],
-      ),
-    );
-  }
-}
-
-class InfoPage extends StatelessWidget {
-  const InfoPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final isVietnamese = Localizations.localeOf(context).languageCode == 'vi';
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(isVietnamese ? 'Thông tin nhóm' : 'Team Info'),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Dam Quang Do - 23010046',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 18),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: Text(isVietnamese ? 'Trang chủ' : 'Home'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
