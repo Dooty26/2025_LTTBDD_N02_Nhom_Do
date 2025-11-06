@@ -4,9 +4,9 @@ import 'weather_service.dart';
 import 'current.dart';
 import '_7d.dart';
 import '_24h.dart';
-import 'group_info.dart';
 import 'location_service.dart';
 import 'location_selector.dart';
+import 'drawer.dart';
 
 void main() {
   runApp(const MyApp());
@@ -21,6 +21,12 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   Locale _locale = const Locale('vi');
+
+  void _setLocale(Locale locale) {
+    setState(() {
+      _locale = locale;
+    });
+  }
 
   void _changeLanguage() {
     setState(() {
@@ -46,6 +52,7 @@ class _MyAppState extends State<MyApp> {
       ],
       home: HomePage(
         onLanguageChange: _changeLanguage,
+        onSetLocale: _setLocale,
         locale: _locale,
       ),
     );
@@ -69,6 +76,14 @@ String translateCondition(String condition, bool isVietnamese) {
       return 'Mưa vừa';
     case 'partly cloudy':
       return 'Trời có mây';
+    case 'light rain shower':
+      return 'Mưa rào nhẹ';
+    case 'patchy light rain':
+      return 'Mưa nhẹ rải rác';
+    case 'fog':
+      return 'Sương mù';
+    case 'clear':
+      return 'Trời quang đãng';
     default:
       return condition;
   }
@@ -76,11 +91,13 @@ String translateCondition(String condition, bool isVietnamese) {
 
 class HomePage extends StatefulWidget {
   final VoidCallback onLanguageChange;
+  final void Function(Locale) onSetLocale;
   final Locale locale;
 
   const HomePage({
     super.key,
     required this.onLanguageChange,
+    required this.onSetLocale,
     required this.locale,
   });
 
@@ -224,78 +241,321 @@ class _HomePageState extends State<HomePage>
   Widget build(BuildContext context) {
     final isVietnamese = widget.locale.languageCode == 'vi';
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isVietnamese ? 'Dự Báo Thời Tiết' : 'Weather Forecast'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.language),
-            onPressed: widget.onLanguageChange,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.blue.shade300,
+              Colors.blue.shade500,
+              Colors.blue.shade700,
+              Colors.blue.shade900,
+            ],
           ),
-        ],
-      ),
-      drawer: Drawer(
-        child: ListView(
-          children: [
-            DrawerHeader(
-              decoration: const BoxDecoration(color: Colors.blue),
-              child: Text(isVietnamese ? 'Menu' : 'Menu',
-                  style: const TextStyle(color: Colors.white, fontSize: 24)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.info),
-              title: Text(isVietnamese ? 'Thông tin nhóm' : 'Team Info'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const InfoPage()),
-                );
-              },
-            ),
-          ],
         ),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    CurrentWeather(
-                      currentWeather: _currentWeather,
-                      isVietnamese: isVietnamese,
-                      translateCondition: translateCondition,
-                      onAddLocationPressed: _showLocationSelector,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(0),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 15),
+                    child: Row(
+                      children: [
+                        Builder(
+                          builder: (context) => Container(
+                            decoration: BoxDecoration(
+                              color: const Color.fromARGB(77, 255, 255, 255),
+                              borderRadius: BorderRadius.circular(15),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color.fromARGB(25, 0, 0, 0),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: IconButton(
+                              onPressed: () =>
+                                  Scaffold.of(context).openDrawer(),
+                              icon: const Icon(Icons.menu,
+                                  color: Colors.white, size: 24),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Center(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color.fromARGB(51, 255, 255, 255),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color:
+                                      const Color.fromARGB(102, 255, 255, 255),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                isVietnamese
+                                    ? 'Dự Báo Thời Tiết'
+                                    : 'Weather Forecast',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 48),
+                      ],
                     ),
-                    const SizedBox(height: 60),
-                    Text(
-                      isVietnamese ? 'Dự báo 7 ngày tới' : '7-Day Forecast',
-                      style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 10),
-                    SevenDayForecast(
-                      forecast7Days: _forecast7Days,
-                      isVietnamese: isVietnamese,
-                      translateCondition: translateCondition,
-                    ),
-                    const SizedBox(height: 60),
-                    Text(
-                      isVietnamese ? 'Dự báo 24 giờ tới' : '24-Hour Forecast',
-                      style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 10),
-                    HourlyForecast(
-                      next24Hours: _getNext24Hours(),
-                      isVietnamese: isVietnamese,
-                      translateCondition: translateCondition,
-                    ),
-                  ],
-                ),
+                  ),
+                  _loading
+                      ? Container(
+                          width: double.infinity,
+                          height: MediaQuery.of(context).size.height,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.blue.shade300,
+                                Colors.blue.shade500,
+                                Colors.blue.shade700,
+                                Colors.blue.shade900,
+                              ],
+                            ),
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                                const SizedBox(height: 20),
+                                Text(
+                                  isVietnamese ? 'Đang tải' : 'loading',
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 16),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              CurrentWeather(
+                                currentWeather: _currentWeather,
+                                isVietnamese: isVietnamese,
+                                translateCondition: translateCondition,
+                                onAddLocationPressed: _showLocationSelector,
+                              ),
+                              const SizedBox(height: 30),
+                              Container(
+                                padding: const EdgeInsets.all(25),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Color.fromARGB(80, 255, 255, 255),
+                                      Color.fromARGB(60, 255, 255, 255),
+                                      Color.fromARGB(70, 110, 226, 245),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(28),
+                                  border: Border.all(
+                                    color: const Color.fromARGB(
+                                        120, 255, 255, 255),
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color.fromARGB(35, 0, 0, 0),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 10),
+                                    ),
+                                    BoxShadow(
+                                      color: const Color.fromARGB(
+                                          40, 255, 255, 255),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, -2),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16, vertical: 12),
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color.fromARGB(120, 110, 226, 245),
+                                            Color.fromARGB(100, 106, 130, 251),
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(18),
+                                        border: Border.all(
+                                          color: const Color.fromARGB(
+                                              90, 255, 255, 255),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Image.asset(
+                                            'assets/imgs/7&24.png',
+                                            width: 26,
+                                            height: 26,
+                                            errorBuilder: (context, error,
+                                                    stackTrace) =>
+                                                const Icon(Icons.calendar_today,
+                                                    color: Colors.white,
+                                                    size: 26),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Text(
+                                            isVietnamese
+                                                ? 'Dự báo 7 ngày tới'
+                                                : '7-Day Forecast',
+                                            style: const TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                              letterSpacing: 0.3,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 20),
+                                    SevenDayForecast(
+                                      forecast7Days: _forecast7Days,
+                                      isVietnamese: isVietnamese,
+                                      translateCondition: translateCondition,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 25),
+                              Container(
+                                padding: const EdgeInsets.all(25),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Color.fromARGB(80, 255, 255, 255),
+                                      Color.fromARGB(60, 255, 255, 255),
+                                      Color.fromARGB(70, 252, 70, 107),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(28),
+                                  border: Border.all(
+                                    color: const Color.fromARGB(
+                                        120, 255, 255, 255),
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color.fromARGB(35, 0, 0, 0),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 10),
+                                    ),
+                                    BoxShadow(
+                                      color: const Color.fromARGB(
+                                          40, 255, 255, 255),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, -2),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16, vertical: 12),
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color.fromARGB(120, 252, 70, 107),
+                                            Color.fromARGB(100, 63, 94, 251),
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(18),
+                                        border: Border.all(
+                                          color: const Color.fromARGB(
+                                              90, 255, 255, 255),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Image.asset(
+                                            'assets/imgs/7&24.png',
+                                            width: 26,
+                                            height: 26,
+                                            errorBuilder: (context, error,
+                                                    stackTrace) =>
+                                                const Icon(Icons.access_time,
+                                                    color: Colors.white,
+                                                    size: 26),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Text(
+                                            isVietnamese
+                                                ? 'Dự báo 24 giờ tới'
+                                                : '24-Hour Forecast',
+                                            style: const TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                              letterSpacing: 0.3,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 20),
+                                    HourlyForecast(
+                                      next24Hours: _getNext24Hours(),
+                                      isVietnamese: isVietnamese,
+                                      translateCondition: translateCondition,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                ],
               ),
             ),
+          ),
+        ),
+      ),
+      drawer: AppDrawer(
+        locale: widget.locale,
+        onSetLocale: widget.onSetLocale,
+      ),
     );
   }
 }

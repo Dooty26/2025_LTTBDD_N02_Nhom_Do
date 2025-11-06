@@ -111,7 +111,6 @@ Future<LocationModel?> getDeviceLocation() async {
   final position = await Geolocator.getCurrentPosition(
     desiredAccuracy: LocationAccuracy.high,
   );
-
   return LocationModel(
     name: '${position.latitude},${position.longitude}',
     displayName: 'Vị trí hiện tại',
